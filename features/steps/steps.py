@@ -14,6 +14,7 @@ def step_impl(context):
     assert 'error' in context.contents
 
 @then('the file should contain the word "OK"')
+
 def step_impl(context):
     assert 'OK' in context.contents
 
