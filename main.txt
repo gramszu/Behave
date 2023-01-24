@@ -1,0 +1,414 @@
+import time
+from fluencelib.puf import *
+from datetime import datetime
+
+ste = "TLM ERROR "
+sts = "TLM STATUS"
+stp = "TLM PROTOCOL"
+stf = "TLM Firmware"
+stf = "TLM serial number: "
+ct = current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+rts = "******** Report_Test_Embedded **********"
+rte = "******** End_of_Test_Embedded **********"
+can_port = '/dev/ttyACM0'
+rpt ="report.txt"
+sertlm ="TM000000"
+wr = "Wrong number error"
+
+sco = "SHT35|SENSOR TEMP|OK "
+sce = "SHT35|SENSOR TEMP| ***ERROR***! "
+shto = "SHT35|SENSOR HUMIDITY %RH |OK "
+shte = "SHT35|SENSOR HUMIDITY %RH | ***ERROR!*** "
+shtc_down ="10000"
+shtc_up ="28000"
+shte_down ="10000"
+shte_up ="28000"
+
+
+ntc0_down= "1000"
+ntc0_up = "1700"
+ntc0_ok = "NTCO|SENSOR|CH04| OK "  # złącze, czujnik, kanał, temperatura
+ntc0_er = "NTCO|SENSOR|CH04|***ERROR!*** "
+
+
+ntc1_down= "1000"
+ntc1_up = "1700"
+ntc1_ok = "NTC1|SENSOR|CH05| OK "  # złącze, czujnik, kanał, temperatura
+ntc1_err = "NTC1|SENSOR|CH05|***ERROR!*** "
+
+
+ntc2_down= "1000"
+ntc2_up = "1700"
+ntc2_ok = "NTC2|SENSOR|CH06| OK "  # złącze, czujnik, kanał, temperatura
+ntc2_err = "NTC2|SENSOR|CH06|***ERROR!*** "
+
+
+ntc3_down= "1000"
+ntc3_up = "1700"
+ntc3_ok = "NTC3|SENSOR|CH07| OK "  # złącze, czujnik, kanał, temperatura
+ntc3_err = "NTC3|SENSOR|CH07|***ERROR!*** "
+
+
+pd0_avg_down= "20"
+pd0_avg_up = "300"
+pd0_avg_ok = "PHOTO|PD0_AVG|CH00|OK "
+pd0_avg_err = "PHOTO|PD0_AVG|CH00|***ERROR!*** "
+
+
+
+pd1_avg_down= "20"
+pd1_avg_up = "300"
+pd1_avg_ok = "PHOTO|PD1_AVG|CH01|OK "
+pd1_avg_err = "PHOTO|PD1_AVG|CH01|***ERROR!*** "
+
+
+
+pd2_avg_down= "20"
+pd2_avg_up = "300"
+pd2_avg_ok = "PHOTO|PD2_AVG|CH02|OK "
+pd2_avg_err = "PHOTO|PD2_AVG|CH02|***ERROR!*** "
+
+
+pd3_avg_down= "20"
+pd3_avg_up = "300"
+pd3_avg_ok = "PHOTO|PD3_AVG|CH03|OK "
+pd3_avg_err = "PHOTO|PD3_AVG|CH03|***ERROR!*** "
+
+
+
+# TM3100C8
+
+
+def init():
+
+    with open(rpt, "a") as file:
+        file.write(rts+"\n")
+
+    global BUS
+    BUS = can_init(can_port)
+    puf_reboot(BUS)
+    time.sleep(2)
+    discovered = puf_discover(BUS)
+
+
+    for dev in discovered:
+        if dev == sertlm:
+            print(stf, discovered)
+            with open(rpt, "a") as file:
+                file.write(stf+sertlm+"\n")
+            puf_enumerate(BUS, sertlm, 1)
+        else:
+            print(wr)
+
+        # =====================uruchamiam odczyt wszystkich kanałów============================
+
+    msg = PufMsg(domain=PufProto.DOM_TELEMETRY,
+                 command=PufProto.CMD_TLM_CHEN,
+                 request=PufProto.WREQ,
+                 data=(0xffff | (0xffff << 32)).to_bytes(8, 'little'),  # enable channels btc 0
+                 address=1)
+    rsp = puf_execute(BUS, msg, timeout=1)
+    puf_set_enabled(BUS, PufProto.DOM_TELEMETRY, 1, 1, timeout=1)
+
+    #============================================================================================
+def get_status_TLM():
+    with open(rpt, "a") as file:
+
+        x = puf_get_firmware_version(BUS, 1, timeout=1)
+        print(stf, x)
+        file.write(ct + " " + str(stf) + str(x) + "\n")
+
+        r = puf_get_error(BUS, 0x40, 1, timeout=1)
+        print(ste, r)
+        file.write(ct + " " + str(ste)+ str(r)+"\n")
+
+        t = puf_get_status(BUS, 0x40, 1, timeout=1)
+        print(sts, t)
+        file.write(ct + " " + str(sts)+ str(t) + "\n")
+
+        z = puf_get_protocol_version(BUS, 1, timeout=1)
+        print(stp, z)
+        file.write(ct + " " + str(stp) + str(t) + "\n")
+def sht35_read_temp_raw():
+    msg = PufMsg(domain=0x40,  # domena
+                 command=PufProto.CMD_TLM_CH11_RAW,  # odczyt owartość przekonvertowanej na C z kanału CH
+                 request=PufProto.RREQ,  # czy zapis czy odczyt
+                 address=1)
+
+    rsp = puf_execute(BUS, msg, timeout=1)
+    t = (rsp.to_unsigned())
+    with open(rpt, "a") as file:
+       if int(shtc_down) <= rsp.to_unsigned() <= int(shtc_up):
+           file.write(ct + " " + sco + str(t) +"\n")
+       else:
+           file.write(ct + " " + sce +str(t) +"\n")
+def sht35_read_humidity_raw():
+    msg = PufMsg(domain=0x40,  # domena
+                 command=PufProto.CMD_TLM_CH12_RAW,  # odczyt owartość przekonvertowanej na C z kanału CH
+                 request=PufProto.RREQ,  # czy zapis czy odczyt
+                 address=1)
+
+    rsp = puf_execute(BUS, msg, timeout=1)
+
+    t = (rsp.to_unsigned())
+    with open(rpt, "a") as file:
+       if int(shte_down) <= rsp.to_unsigned() <= int (shte_up):
+        file.write(ct + " " + shto + str(t) +"\n")
+       else:
+           file.write(ct + " " + shte +str(t) +"\n")
+
+def ntc0_read_temp_raw():
+    msg = PufMsg(domain=0x40,  # domena
+                 command=PufProto.CMD_TLM_CH04_RAW,  # odczyt owartość przekonvertowanej na C z kanału CH
+                 request=PufProto.RREQ,  # czy zapis czy odczyt
+                 address=1)
+
+    ntc0 = ("NTC0|CH4|RAW")  # złącze, czujnik, kanał, temperatura
+
+
+
+    rsp = puf_execute(BUS, msg, timeout=1)
+    print(ntc0, rsp.to_unsigned())
+
+
+    d = rsp
+
+
+    with open(rpt, "a") as file:
+       if int(ntc0_down) <= rsp.to_unsigned() <= int(ntc0_up):
+        file.write(ct + " " + ntc0_ok + str (d.to_unsigned()) +"\n")
+       else:
+           file.write(ct + " " + ntc0_er + str(d.to_unsigned()) +"\n")
+def ntc1_read_temp_raw():
+
+    msg = PufMsg(domain=0x40,  # domena
+                 command=PufProto.CMD_TLM_CH05_RAW,  # odczyt owartość przekonvertowanej na C z kanału CH
+                 request=PufProto.RREQ,  # czy zapis czy odczyt
+                 address=1)
+
+    ntc1 = ("NTC1|CH5|RAW")  # złącze, czujnik, kanał, temperatura
+
+    rsp = puf_execute(BUS, msg, timeout=1)
+    print(ntc1, rsp.to_unsigned())
+
+    d = rsp
+    with open(rpt, "a") as file:
+       if int(ntc1_down) <= rsp.to_unsigned() <= int (ntc1_up):
+        file.write(ct + " " + ntc1_ok + str (d.to_unsigned()) +"\n")
+        #print(current_time + " " + a+(d))
+       else:
+           file.write(ct + " " + ntc1_err + str(d.to_unsigned()) +"\n")
+def ntc2_read_temp_raw():
+
+    msg = PufMsg(domain=0x40,  # domena
+                 command=PufProto.CMD_TLM_CH06_RAW,  # odczyt owartość przekonvertowanej na C z kanału CH
+                 request=PufProto.RREQ,  # czy zapis czy odczyt
+                 address=1)
+
+    ntc1 = ("NTC3|CH6|RAW")  # złącze, czujnik, kanał, temperatura
+    rsp = puf_execute(BUS, msg, timeout=1)
+    print(ntc1, rsp.to_unsigned())
+    d = rsp
+    with open(rpt, "a") as file:
+       if int (ntc2_down) <= rsp.to_unsigned() <= int(ntc2_up):
+        file.write(ct + " " + ntc2_ok + str (d.to_unsigned()) +"\n")
+
+       else:
+           file.write(ct + " " + ntc2_err + str(d.to_unsigned()) +"\n")
+
+def ntc3_read_temp_raw ():
+    msg = PufMsg(domain=0x40,  # domena
+                 command=PufProto.CMD_TLM_CH07_RAW,  # odczyt owartość przekonvertowanej na C z kanału CH
+                 request=PufProto.RREQ,  # czy zapis czy odczyt
+                 address=1)
+
+    ntc1 = ("NTC4|CH7|RAW")  # złącze, czujnik, kanał, temperatura
+    rsp = puf_execute(BUS, msg, timeout=1)
+    print(ntc1, rsp.to_unsigned())
+    d = rsp
+    with open(rpt, "a") as file:
+        if int(ntc3_down) <= rsp.to_unsigned() <= int(ntc3_up):
+            file.write(ct + " " + ntc3_ok + str(d.to_unsigned()) + "\n")
+
+        else:
+            file.write(ct + " " + ntc3_err + str(d.to_unsigned()) + "\n")
+
+def photo_read_0_raw():
+    msg = PufMsg(domain=0x40,
+                 command=PufProto.CMD_TLM_CH00_RAW,
+                 request=PufProto.RREQ,
+                 address=1)
+
+    a = "PHOTO|PD0_AVG|RAW"
+
+    rsp = puf_execute(BUS, msg, timeout=1)
+    print(a, rsp.to_unsigned())
+    d = rsp
+    with open(rpt, "a") as file:
+        if int(pd0_avg_down) <= rsp.to_unsigned() <= int(pd0_avg_up):
+            file.write(ct + " " + pd0_avg_ok + str(rsp.to_unsigned()) + "\n")
+        else:
+            file.write(ct + " " + pd0_avg_err + str(rsp.to_unsigned()) + "\n")
+def photo_read_1_raw():
+    msg = PufMsg(domain=0x40,
+                 command=PufProto.CMD_TLM_CH01_RAW,
+                 request=PufProto.RREQ,
+                 address=1)
+
+    a = ("PHOTO|PD1_AVG|RAW")
+
+    rsp = puf_execute(BUS, msg, timeout=1)
+    print(a, rsp.to_unsigned())
+    d = rsp
+    with open(rpt, "a") as file:
+        if int(pd1_avg_down) <= rsp.to_unsigned() <= int(pd1_avg_up):
+            file.write(ct + " " + pd1_avg_ok + str(rsp.to_unsigned()) + "\n")
+        else:
+            file.write(ct + " " + pd1_avg_err + str(rsp.to_unsigned()) + "\n")
+def photo_read_2_raw():
+    msg = PufMsg(domain=0x40,
+                 command=PufProto.CMD_TLM_CH02_RAW,
+                 request=PufProto.RREQ,
+                 address=1)
+
+    a = "PHOTO|PD2_AVG|RAW"
+
+    rsp = puf_execute(BUS, msg, timeout=1)
+    print(a, rsp.to_unsigned())
+    d = rsp
+    with open(rpt, "a") as file:
+        if int(pd2_avg_down) <= rsp.to_unsigned() <= int(pd2_avg_up):
+            file.write(ct + " " + pd2_avg_ok + str(rsp.to_unsigned()) + "\n")
+        else:
+            file.write(ct + " " + pd2_avg_err + str(rsp.to_unsigned()) + "\n")
+def photo_read_3_raw():
+    msg = PufMsg(domain=0x40,  # domena
+                 command=PufProto.CMD_TLM_CH03_RAW,
+                 request=PufProto.RREQ,  # czy zapis czy odczyt
+                 address=1)
+
+    a = ("PHOTO|PD3_AVG|RAW")  # złącze, czujnik, kanał, temperatura
+
+    rsp = puf_execute(BUS, msg, timeout=1)
+    print(a, rsp.to_unsigned())
+    with open(rpt, "a") as file:
+        if int(pd3_avg_down) <= rsp.to_unsigned() <= int(pd3_avg_up):
+            file.write(ct + " " + pd3_avg_ok + str(rsp.to_unsigned()) + "\n")
+        else:
+            file.write(ct + " " + pd3_avg_err + str(rsp.to_unsigned()) + "\n")
+def gpio():
+    msgh = PufMsg(domain=0x40,  # domena
+                 command=PufProto.CMD_TLM_GPIO,
+                 request=PufProto.WREQ,
+                 #data=(0x1 | (0x1 << 32)).to_bytes(8, 'little'),  # PWR_EXT_ON
+                 data=(0x1 | (0x1 << 32)).to_bytes(8, 'little'),  # PWR_EXT_ON
+                 address=1)
+
+    b = ("GPIO|PWR_EXT_24V_ON")   # złącze, czujnik, kanał, temperatura
+
+    rsp = puf_execute(BUS, msgh, timeout=1)
+    print(b,rsp.to_unsigned())
+def gpio_off():
+    time.sleep(2)
+    msgh = PufMsg(domain=0x40,  # domena
+                 command=PufProto.CMD_TLM_GPIO,  # odczyt owartość przekonvertowanej na C z kanału CH
+                 request=PufProto.WREQ,  # czy zapis czy odczyt
+                 data=(0x0 | (0x1 << 32)).to_bytes(8, 'little'),  # OFF PWR_EXT 24V
+                 address=1)
+
+    b = ("GPIO|PWR_EXT_24V_OFF")  # złącze, czujnik, kanał, temperatura
+
+    rsp = puf_execute(BUS, msgh, timeout=1)
+    print(b,rsp.to_unsigned())
+
+
+
+
+def serial_1_pwr_on():
+
+    msgh = PufMsg(domain=0x40,  # domena
+                 command=PufProto.CMD_TLM_GPIO,  # odczyt owartość przekonvertowanej na C z kanału CH
+                 request=PufProto.WREQ,  # czy zapis czy odczyt
+                 data=((1<<2) | ((1<<2) << 32)).to_bytes(8, 'little'),
+                 address=1)
+
+    b = "* GPIO2 - OUT (Serial-1 power enable"
+
+    rsp = puf_execute(BUS, msgh, timeout=1)
+    print(b,rsp.to_unsigned())
+    print("power off serial 1")
+    time.sleep(5)
+
+
+
+def serial_1_pwr_off():
+
+    msgh = PufMsg(domain=0x40,  # domena
+                  command=PufProto.CMD_TLM_GPIO,  # odczyt owartość przekonvertowanej na C z kanału CH
+                  request=PufProto.WREQ,  # czy zapis czy odczyt
+                  data=((0<<2) | ((1<<2) << 32)).to_bytes(8, 'little'),
+                  address=1)
+
+    b = "* GPIO2 - OUT (Serial-1 power off"
+
+    rsp = puf_execute(BUS, msgh, timeout=1)
+    print(b, rsp.to_unsigned())
+
+
+'''
+ * GPIO1 - OUT (Serial-0 power enable)
+ * GPIO2 - OUT (Serial-1 power enable)
+ * GPIO3 - OUT (Teraxion power enable)
+ * GPIO8 - IN (Shutter open sensor)
+ * GPIO9 - IN (Shutter closed sensor)
+
+'''
+
+
+
+
+def end_off_test():
+    with open(rpt, "a") as file:
+        file.write(rts+"\n")
+
+
+
+
+
+
+# TM3100C8
+
+init()
+get_status_TLM()
+serial_1_pwr_on()
+serial_1_pwr_off()
+
+
+'''
+
+sht35_read_temp_raw()
+sht35_read_humidity_raw()
+photo_read_0_raw()
+photo_read_1_raw()
+photo_read_2_raw()
+photo_read_3_raw()
+ntc0_read_temp_raw()
+ntc1_read_temp_raw()
+ntc2_read_temp_raw()
+ntc3_read_temp_raw()
+
+#gpio()
+#end_off_test()
+#gpio_off()
+
+#nt
+
+'''
+
+
+'''
+
+
+
+teraxion()
+'''
